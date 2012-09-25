@@ -12,6 +12,10 @@
 #include <algorithm>
 #include <functional>
 #include <stdint.h>
+#if __GNUC_PREREQ(4,3)
+#else
+#include <byteswap.h>
+#endif
 
 #include "thread.h"
 #include "thread_store.h"
@@ -128,18 +132,6 @@ class Word
           p->append(reinterpret_cast<const char *>(&w1), 8);
           p->append(reinterpret_cast<const char *>(&w2), len_ - 8);
         }
-        //int64_t m = std::min(len_, 8L);
-        //for (int64_t i = 0; i < m; i++)
-        //{
-        //  p->push_back(static_cast<char>((w1_ >> ((7 - i) * 5)) & 0x1F) + 'a');
-        //}
-        //if (len_ > 8)
-        //{
-        //  for (int64_t i = 0; i < len_ - 8; i++)
-        //  {
-        //    p->push_back(static_cast<char>((w2_ >> ((7 - i) * 5)) & 0x1F) + 'a');
-        //  }
-        //}
         return p->c_str();
       }
       else
@@ -161,7 +153,7 @@ class Word
   protected:
     uint64_t w1_;
     uint64_t w2_;
-//        const char * ptr_;
+//    const char * ptr_;
     int64_t len_;
 };
 
@@ -175,14 +167,14 @@ class WordList
     int64_t size_;
     int64_t cap_;
 
-    void init_(int64_t size)
+    void init_(int64_t cap)
     {
-      ls_ = new uint64_t[size];
-      rs_ = new uint64_t[size];
-      ptrs_ = new const char * [size];
-      lens_ = new int64_t[size];
+      ls_ = new uint64_t[cap];
+      rs_ = new uint64_t[cap];
+      ptrs_ = new const char * [cap];
+      lens_ = new int64_t[cap];
       size_ = 0;
-      cap_ = size;
+      cap_ = cap;
     }
 
   public:
@@ -193,14 +185,40 @@ class WordList
       init_(DEFAULT_LEN);
     }
 
-    WordList(int64_t size)
+    WordList(int64_t cap)
     {
-      init_(size);
+      init_(cap);
+    }
+
+    ~WordList()
+    {
+      delete[] ls_;
+      delete[] rs_;
+      delete[] ptrs_;
+      delete[] lens_;
     }
 
     int64_t size() const
     {
       return size_;
+    }
+
+    void reserve(int64_t cap)
+    {
+      if (cap > cap_)
+      {
+        delete[] ls_;
+        delete[] rs_;
+        delete[] ptrs_;
+        delete[] lens_;
+        init_(cap);
+      }
+    }
+
+    void resize(int64_t size)
+    {
+      reserve(size);
+      size_ = size;
     }
 
     void push_back(const Word & w)
@@ -219,7 +237,7 @@ class WordList
       }
     }
 
-    Word operator [] (int64_t index)
+    Word operator [] (int64_t index) const
     {
       if (index < 0 && index >= size_)
       {
@@ -231,8 +249,15 @@ class WordList
     class iterator
     {
       public:
+        typedef std::random_access_iterator_tag iterator_category;
+        typedef Word                          value_type;
+        typedef int64_t                       difference_type;
+        typedef Word *                        pointer;
+        typedef Word &                        reference;
+      public:
+        iterator() : index_(0) {}
         iterator(int64_t index, WordList & list)
-          : index_(index), list_(list) {}
+          : index_(index), plist_(&list) {}
 
         iterator & operator ++ ()
         {
@@ -244,20 +269,118 @@ class WordList
         {
           int64_t o = index_;
           index_++;
-          return iterator(o, list_);
+          return iterator(o, *plist_);
         }
 
-        void operator = (const Word & w)
+        iterator & operator -- ()
         {
-          list_.ls_[index_] = w.w1_;
-          list_.rs_[index_] = w.w2_;
-          //list_.ptrs_[index_] = w.ptr_;
-          list_.lens_[index_] = w.len_;
+          index_--;
+          return *this;
+        }
+
+        iterator operator -- (int)
+        {
+          int64_t o = index_;
+          index_--;
+          return iterator(o, *plist_);
+        }
+
+        iterator & operator += (int64_t s)
+        {
+          index_ += s;
+          return *this;
+        }
+
+        iterator operator + (int64_t s)
+        {
+          if (plist_ == NULL) throw new std::exception();
+          return iterator(index_ + s, *plist_);
+        }
+
+        iterator operator - (int64_t s) const
+        {
+          if (plist_ == NULL) throw new std::exception();
+          return iterator(index_ - s, *plist_);
+        }
+
+        int64_t operator - (const iterator & r) const
+        {
+          if (plist_ != r.plist_) throw new std::exception();
+          return r.index_ - index_;
+        }
+
+        bool operator >= (const iterator & r) const
+        {
+          if (plist_ != r.plist_) throw new std::exception();
+          return index_ >= r.index_;
+        }
+
+        bool operator < (const iterator & r) const
+        {
+          if (plist_ != r.plist_) throw new std::exception();
+          return  index_ < r.index_;
+        }
+
+        bool operator != (const iterator & r) const
+        {
+          if (plist_ != r.plist_) throw new std::exception();
+          return r.index_ != index_;
+        }
+
+        bool operator == (const iterator & r) const
+        {
+          if (plist_ != r.plist_) throw new std::exception();
+          return r.index_ == index_;
+        }
+
+        //void operator = (const Word & w)
+        //{
+        //  if (NULL == plist_) throw new std::exception();
+        //  plist_->ls_[index_] = w.w1_;
+        //  plist_->rs_[index_] = w.w2_;
+        //  //plist_->ptrs_[index_] = w.ptr_;
+        //  plist_->lens_[index_] = w.len_;
+        //}
+
+        void copy_from(const iterator & r)
+        {
+          if (NULL == plist_ || NULL == r.plist_) throw new std::exception();
+          plist_->ls_[index_] = r.plist_->ls_[r.index_];
+          plist_->rs_[index_] = r.plist_->rs_[r.index_];
+          //plist_->ptrs_[index_] = r.plist_->ptrs_[r.index_];
+          plist_->lens_[index_] = r.plist_->lens_[r.index_];
+        }
+
+        const char* get_ptr() const
+        {
+          return plist_->ptrs_[index_];
+        }
+
+        int64_t get_len() const
+        {
+          return plist_->lens_[index_];
+        }
+
+        bool less(const iterator & r) const
+        {
+          if (plist_ == NULL || r.plist_ == NULL) throw new std::exception();
+          return plist_->ls_[index_] < r.plist_->ls_[r.index_]
+                 || (plist_->ls_[index_] == r.plist_->ls_[r.index_]
+                     && plist_->rs_[index_] < r.plist_->rs_[r.index_]);
+        }
+
+        void print()
+        {
+        }
+
+        Word operator * () const
+        {
+          return (*plist_)[index_];
         }
 
       protected:
         int64_t index_;
-        WordList & list_;
+        WordList * plist_;
     };
 
     iterator begin()
@@ -272,6 +395,7 @@ class WordList
 };
 
 typedef std::vector<Word>   TWordList;
+//typedef WordList            TWordList;
 typedef TWordList::iterator TListIter;
 struct ListRange
 {
@@ -292,7 +416,7 @@ void print_words(TListIter begin, TListIter end)
 {
   for (TListIter iter = begin; iter != end; iter++)
   {
-    iter->print();
+    //(*iter).print();
     std::cout << " | " ;
   }
   std::cout << std::endl;
@@ -407,16 +531,23 @@ class Acceptor
 {
   public:
     virtual ~Acceptor() {}
-    virtual void accept(Word & word) = 0;
+    //virtual void accept(Word & word) = 0;
+    virtual void accept(TListIter & iter) = 0;
 };
 
 class ListAcceptor : public Acceptor
 {
   public:
     ListAcceptor(TListIter & begin) : cur_(begin) {}
-    void accept(Word & word)
+    //void accept(Word & word)
+    //{
+    //  *cur_++ = word;
+    //}
+    void accept(TListIter & iter)
     {
-      *cur_++ = word;
+      *cur_ = *iter;
+      //cur_.copy_from(iter);
+      ++cur_;
     }
   protected:
     TListIter & cur_;
@@ -482,7 +613,8 @@ class Merger
         for (TListIter iter = ways[0].begin;
             iter != ways[0].end; iter++)
         {
-          acceptor.accept(*iter);
+          //acceptor.accept(*iter);
+          acceptor.accept(iter);
         }
       }
       else if (ways.size() == 2)
@@ -496,24 +628,33 @@ class Merger
             if (ways[1].begin != ways[1].end)
             {
               if ((*ways[0].begin) < (*ways[1].begin))
+              //if (ways[0].begin.less(ways[1].begin))
               {
-                acceptor.accept(*ways[0].begin++);
+                //acceptor.accept(*ways[0].begin++);
+                acceptor.accept(ways[0].begin);
+                ++ways[0].begin;
               }
               else
               {
-                acceptor.accept(*ways[1].begin++);
+                //acceptor.accept(*ways[1].begin++);
+                acceptor.accept(ways[1].begin);
+                ways[1].begin++;
               }
             }
             else
             {
-              acceptor.accept(*ways[0].begin++);
+              //acceptor.accept(*ways[0].begin++);
+              acceptor.accept(ways[0].begin);
+              ++ways[0].begin;
             }
           }
           else
           {
             if (ways[1].begin != ways[1].end)
             {
-              acceptor.accept(*ways[1].begin++);
+              //acceptor.accept(*ways[1].begin++);
+              acceptor.accept(ways[1].begin);
+              ++ways[1].begin;
             }
             else
             {
@@ -528,7 +669,8 @@ class Merger
         make_heap(ways.begin(), ways.end(), merge_comp);
         while (!is_end())
         {
-          acceptor.accept(*ways[0].begin);
+          //acceptor.accept(*ways[0].begin);
+          acceptor.accept(ways[0].begin);
           ways[0].begin++;
           make_heap(ways.begin(), ways.end(), merge_comp);
         }
@@ -572,6 +714,8 @@ class ConcatThread : public Thread
       {
         memcpy(buf_ + len_, iter->get_ptr(), iter->get_len());
         len_ += iter->get_len();
+        //memcpy(buf_ + len_, iter.get_ptr(), iter.get_len());
+        //len_ += iter.get_len();
         buf_[len_] = '\n';
         len_ ++; 
       }
@@ -674,10 +818,10 @@ class WordSorter
         if (0 == i)
           while (buf_[st[0].start_offset] != '\n') st[0].start_offset++;
         st[i].start();
-        st[i].wait();
       }
       for (int i = 0; i < thread_num_; i++)
       {
+        st[i].wait();
       }
 
       int64_t merge_thread_num = thread_num_ / 2;
