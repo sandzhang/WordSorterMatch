@@ -39,13 +39,13 @@ class WordSorter
     class Word
     {
       public:
-        Word() : //w_(0)
-          w1_(0), w2_(0)
+        Word() :
+            w1_(0), w2_(0)
         {}
-        Word(const char * ptr, const int64_t len)
-            : //w_(0)
-              w1_(0), w2_(0)
+        Word(const char * ptr, const int64_t len) :
+            w1_(0), w2_(0)
         {
+//          ptr_ = ptr;
           len_ = len;
           int64_t m = std::min(len, 8L);
           for (int64_t i = 0; i < m; i++)
@@ -62,22 +62,23 @@ class WordSorter
           //printf("%ld %ld\n", w1_, w2_);
         }
 
-        Word(const Word & r) : //w_(r.w_)
-          w1_(r.w1_), w2_(r.w2_), len_(r.len_)
+        Word(const Word & r) :
+            w1_(r.w1_), w2_(r.w2_),
+//            ptr_(r.ptr_),
+            len_(r.len_)
         {}
 
         Word & operator = (const Word & r)
         {
-          //w_ = r.w_;
           w1_ = r.w1_;
           w2_ = r.w2_;
+//          ptr_ = r.ptr_;
           len_ = r.len_;
           return *this;
         }
 
         bool operator < (const Word & r) const
         {
-          //return w_ < r.w_;
           return w1_ < r.w1_ || (w1_ == r.w1_ && w2_ < r.w2_);
         }
 
@@ -100,7 +101,6 @@ class WordSorter
                 p->push_back(static_cast<char>((w2_ >> ((7 - i) * 5)) & 0x1F) + 'a');
               }
             }
-
             return p->c_str();
           }
           else
@@ -119,16 +119,14 @@ class WordSorter
         }
 
       protected:
-        //__int128 w_;
         int64_t w1_;
         int64_t w2_;
+//        const char * ptr_;
         int64_t len_;
     };
-
-    static thread_store<std::string> output_buf;
-
     typedef std::vector<Word>   TWordList;
     typedef TWordList::iterator TWordListIter;
+
   public:
     WordSorter(const std::string & input_file, const std::string & output_file)
       : input_file_(input_file), output_file_(output_file),
@@ -159,7 +157,95 @@ class WordSorter
         throw new std::exception();
       }
 
-      split_words();
+      //split_words();
+      threaded_split_words();
+    }
+
+    struct SplitParam
+    {
+      const char * buf;
+      int64_t len;
+      int64_t start_offset;
+      int64_t end_offset;
+      TWordList res_list;
+    };
+
+    class SplitThread : public Thread
+    {
+      void * run(void * arg)
+      {
+        SplitParam * param = reinterpret_cast<SplitParam *>(arg);
+        const char * buf = param->buf;
+        int64_t len = param->len;
+        int64_t start_offset = param->start_offset;
+        int64_t end_offset = param->end_offset;
+        if (0 != start_offset && buf[start_offset] != '\n')
+        {
+          while (start_offset < len && buf[start_offset] != '\n')
+            start_offset++;
+        }
+        while (end_offset < len && buf[end_offset] != '\n')
+          end_offset++;
+        if (buf[start_offset] == '\n') start_offset++;
+        int64_t start = start_offset;
+        for (int64_t i = start_offset; i < end_offset; i++)
+        {
+          if (isspace(buf[i]))
+          {
+            if (i > start)
+            {
+              param->res_list.push_back(Word(buf + start, i - start));
+            }
+            start = i + 1;
+          }
+        }
+        if (start < end_offset)
+        {
+          param->res_list.push_back(Word(buf + start, end_offset - start));
+        }
+      }
+    };
+
+    void threaded_split_words()
+    {
+      int64_t s0 = microseconds();
+      const int THREAD_NUM = sysconf(_SC_NPROCESSORS_ONLN);
+      int64_t num_per_thread = buf_len_ / THREAD_NUM;
+      SplitParam * sp = new SplitParam[THREAD_NUM];
+      SplitThread * st = new SplitThread[THREAD_NUM];
+      for (int i = 0; i < THREAD_NUM; i++)
+      {
+        sp[i].buf = buf_;
+        sp[i].len = buf_len_;
+        sp[i].start_offset = i * num_per_thread;
+        sp[i].end_offset = (i + 1) * num_per_thread;
+        if (i == THREAD_NUM - 1)
+        {
+          sp[i].end_offset = buf_len_;
+        }
+        st[i].start(sp + i);
+      }
+      int64_t link_time = 0;
+      for (int i = 0; i < THREAD_NUM; i++)
+      {
+        st[i].wait();
+        int64_t ss0 = microseconds();
+        for (TWordListIter iter = sp[i].res_list.begin();
+             iter != sp[i].res_list.end(); iter++)
+        {
+          list_.get_cur_list().push_back(*iter);
+        }
+        link_time += microseconds() - ss0;
+      }
+      std::cout << "Total words: " << list_.get_cur_list().size() << std::endl;
+      int64_t s1 = microseconds();
+      std::cout << "splitting used: " << s1 - s0 << std::endl;
+      std::cout << "linking used: " << link_time << std::endl;
+      //for (int i = 0; i < 9; i++)
+      //{
+      //  printf("len = %ld word = %s\n", list_.get_cur_list()[i].get_len(),
+      //      list_.get_cur_list()[i].get_ptr());
+      //}
     }
 
     void split_words()
@@ -624,8 +710,7 @@ class WordSorter
     char * buf_;
     int64_t buf_len_;
     int64_t file_size_;
-    //TWordList word_list_;
-    //TMergeParams merge_params_;
+    static thread_store<std::string> output_buf;
     DWordList list_;
 };
 
