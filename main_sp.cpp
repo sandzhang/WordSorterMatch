@@ -38,28 +38,45 @@ class WordSorter
     class Word
     {
       public:
-        Word() : w_(0) {}
+        Word() : //w_(0)
+          w1_(0), w2_(0)
+        {}
         Word(const char * ptr, const int64_t len)
-            : w_(0)
+            : //w_(0)
+              w1_(0), w2_(0)
         {
-          for (int64_t i = 0; i < len; i++)
+          int64_t m = std::min(len, 8L);
+          for (int64_t i = 0; i < m; i++)
           {
-            w_ <<= 5;
-            w_ += ptr[i] - 'a';
+            w1_ <<= 5;
+            w1_ += ptr[i] - 'a';
+          }
+          if (len > 8)
+          {
+            for (int64_t i = 8; i < len; i++)
+            {
+              w2_ <<= 5;
+              w2_ += ptr[i] - 'a';
+            }
           }
         }
 
-        Word(const Word & r) : ptr_(r.ptr_), prefix_(r.prefix_), len_(r.len_) {}
+        Word(const Word & r) : //w_(r.w_)
+          w1_(r.w1_), w2_(r.w2_)
+        {}
 
         Word & operator = (const Word & r)
         {
-          w_ = r.w_;
+          //w_ = r.w_;
+          w1_ = r.w1_;
+          w2_ = r.w2_;
           return *this;
         }
 
         bool operator < (const Word & r) const
         {
-          return w_ < r.w_;
+          //return w_ < r.w_;
+          return w1_ < r.w1_ || (w1_ == r.w1_ && w2_ < r.w2_);
         }
 
         const char* get_ptr() const
@@ -77,7 +94,9 @@ class WordSorter
         }
 
       protected:
-        __int128 w_;
+        //__int128 w_;
+        int64_t w1_;
+        int64_t w2_;
     };
 
     typedef std::vector<Word *> TWordList;
