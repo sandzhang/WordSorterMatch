@@ -14,6 +14,7 @@
 #include <stdint.h>
 
 #include "thread.h"
+#include "thread_store.h"
 
 int64_t microseconds() {
   struct timeval tv; 
@@ -45,20 +46,20 @@ class WordSorter
             : //w_(0)
               w1_(0), w2_(0)
         {
+          len_ = len;
           int64_t m = std::min(len, 8L);
           for (int64_t i = 0; i < m; i++)
           {
-            w1_ <<= 5;
-            w1_ += ptr[i] - 'a';
+            w1_ |= static_cast<int64_t>((ptr[i] - 'a')) << ((7 - i) * 5);
           }
           if (len > 8)
           {
             for (int64_t i = 8; i < len; i++)
             {
-              w2_ <<= 5;
-              w2_ += ptr[i] - 'a';
+              w2_ |= static_cast<int64_t>((ptr[i] - 'a')) << ((15 - i) * 5);
             }
           }
+          //printf("%ld %ld\n", w1_, w2_);
         }
 
         Word(const Word & r) : //w_(r.w_)
@@ -81,12 +82,35 @@ class WordSorter
 
         const char* get_ptr() const
         {
-          return NULL;
+          std::string * p = output_buf.get();
+          if (p != NULL)
+          {
+            p->clear();
+
+            int64_t m = std::min(len_, 8L);
+            for (int64_t i = 0; i < m; i++)
+            {
+              p->push_back(static_cast<char>((w1_ >> ((7 - i) * 5)) & 0x1F) + 'a');
+            }
+            if (len_ > 8)
+            {
+              for (int64_t i = 0; i < len_ - 8; i++)
+              {
+                p->push_back(static_cast<char>((w2_ >> ((7 - i) * 5)) & 0x1F) + 'a');
+              }
+            }
+
+            return p->c_str();
+          }
+          else
+          {
+            return NULL;
+          }
         }
 
         int64_t get_len() const
         {
-          return 0;
+          return len_;
         }
 
         void print() const
@@ -97,7 +121,10 @@ class WordSorter
         //__int128 w_;
         int64_t w1_;
         int64_t w2_;
+        int64_t len_;
     };
+
+    static thread_store<std::string> output_buf;
 
     typedef std::vector<Word *> TWordList;
     typedef TWordList::iterator TWordListIter;
@@ -156,6 +183,11 @@ class WordSorter
       std::cout << "Total words: " << list_.get_cur_list().size() << std::endl;
       int64_t s1 = microseconds();
       //std::cout << "splitting used: " << s1 - s0 << std::endl;
+      //for (int i = 0; i < 9; i++)
+      //{
+      //  printf("len = %ld word = %s\n", list_.get_cur_list()[i]->get_len(),
+      //      list_.get_cur_list()[i]->get_ptr());
+      //}
     }
 
     static bool sort_comp(const Word * l, const Word * r)
@@ -543,7 +575,7 @@ class WordSorter
       //  obufi ++; 
       //}
 
-      const int THREAD_NUM = 4;
+      const int THREAD_NUM = sysconf(_SC_NPROCESSORS_ONLN);
       int64_t num_per_thread = list_.get_cur_list().size() / THREAD_NUM;
       ConcatThread * ct = new ConcatThread[THREAD_NUM];
       for (int i = 0; i < THREAD_NUM; i++)
@@ -595,6 +627,8 @@ class WordSorter
     //TMergeParams merge_params_;
     DWordList list_;
 };
+
+thread_store<std::string> WordSorter::output_buf;
 
 int main(int argc, char * argv[])
 {
