@@ -611,8 +611,8 @@ class DWordList
     int cur_index_;
 };
 
-//class SplitThread : public Thread
-class SplitThread : public Runnable
+class SplitThread : public Thread
+//class SplitThread : public Runnable
 {
   public:
     const char * buf;
@@ -826,8 +826,8 @@ class Merger
     }
 };
 
-//class MergeThread : public Thread
-class MergeThread : public Runnable
+class MergeThread : public Thread
+//class MergeThread : public Runnable
 {
   public:
     TListRange  range1;
@@ -844,8 +844,8 @@ class MergeThread : public Runnable
     }
 };
 
-//class ConcatThread : public Thread
-class ConcatThread : public Runnable
+class ConcatThread : public Thread
+//class ConcatThread : public Runnable
 {
   public:
     TListIter begin_, end_;
@@ -905,14 +905,14 @@ class WordSorter
     int64_t             file_size_;
     int64_t             word_num_;
     DWordList           list_;
-    ThreadPool          tpool_;
+    //ThreadPool          tpool_;
   public:
     WordSorter(int thread_num, const std::string & input_file,
         const std::string & output_file)
       : thread_num_(thread_num), input_file_(input_file),
         output_file_(output_file),
-        fd_(-1), buf_(NULL), buf_len_(0), file_size_(0), word_num_(0),
-        tpool_(thread_num)
+        fd_(-1), buf_(NULL), buf_len_(0), file_size_(0), word_num_(0)//,
+        //tpool_(thread_num)
     {
       fd_ = open(input_file.c_str(), O_RDONLY);
       if (-1 == fd_)
@@ -964,13 +964,13 @@ class WordSorter
         st[i].res_list.reserve(word_num_);
         if (0 == i)
           while (buf_[st[0].start_offset] != '\n') st[0].start_offset++;
-        //st[i].start();
-        tpool_.add_runnable(st + i);
+        st[i].start();
+        //tpool_.add_runnable(st + i);
       }
       for (int i = 0; i < thread_num_; i++)
       {
-        //st[i].wait();
-        tpool_.get_output();
+        st[i].wait();
+        //tpool_.get_output();
       }
 
       int64_t merge_thread_num = thread_num_ / 2;
@@ -993,13 +993,13 @@ class WordSorter
         dest_iter += range1.size() + range2.size();
         range_array[i].begin = b;
         range_array[i].end = dest_iter;
-        //mt[i].start();
-        tpool_.add_runnable(mt + i);
+        mt[i].start();
+        //tpool_.add_runnable(mt + i);
       }
       for (int64_t i = 0; i < merge_thread_num; i++)
       {
-        //mt[i].wait();
-        tpool_.get_output();
+        mt[i].wait();
+        //tpool_.get_output();
       }
       //print_words(dest_list.begin(), dest_list.end());
 
@@ -1020,13 +1020,13 @@ class WordSorter
           dest_iter += mt[i].range1.size() + mt[i].range2.size();
           range_array[i].begin = b;
           range_array[i].end = dest_iter;
-          //mt[i].start();
-          tpool_.add_runnable(mt + i);
+          mt[i].start();
+          //tpool_.add_runnable(mt + i);
         }
         for (int64_t i = 0; i < merge_num; i++)
         {
-          //mt[i].wait();
-          tpool_.get_output();
+          mt[i].wait();
+          //tpool_.get_output();
         }
         split_num = merge_num;
         list_.switch_index();
@@ -1164,13 +1164,13 @@ class WordSorter
           end = list_.get_cur_list().end();
         }
         ct[i].init(begin, end, file_size_);
-        //ct[i].start();
-        tpool_.add_runnable(ct + i);
+        ct[i].start();
+        //tpool_.add_runnable(ct + i);
       }
       for (int i = 0; i < thread_num_; i++)
       {
-        //ct[i].wait();
-        tpool_.get_output();
+        ct[i].wait();
+        //tpool_.get_output();
       }
       int64_t s1 = microseconds();
       std::cout << "concating used: " << s1 - s0 << std::endl;
