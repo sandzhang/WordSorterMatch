@@ -634,7 +634,8 @@ class SplitThread : public Thread
       int64_t start = start_offset;
       for (int64_t i = start_offset; i < end_offset; i++)
       {
-        if (isspace(buf[i]))
+        //if (isspace(buf[i]))
+        if (buf[i] == '\n')
         {
           if (i > start)
           {
