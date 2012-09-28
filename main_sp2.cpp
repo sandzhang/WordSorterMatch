@@ -672,15 +672,7 @@ class SplitThread : public Thread
 //    }
 //};
 
-class Acceptor
-{
-  public:
-    virtual ~Acceptor() {}
-    //virtual void accept(Word & word) = 0;
-    virtual void accept(TListIter & iter) = 0;
-};
-
-class ListAcceptor : public Acceptor
+class ListAcceptor
 {
   public:
     ListAcceptor(TListIter & begin) : cur_(begin) {}
@@ -751,7 +743,7 @@ class Merger
       if (r.begin >= r.end) return false;
       return !(*l.begin < *r.begin);
     }
-    void merge(Acceptor & acceptor)
+    void merge(ListAcceptor & acceptor)
     {
       if (ways.size() == 1)
       {
