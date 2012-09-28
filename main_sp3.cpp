@@ -20,8 +20,6 @@
 
 #include "thread.h"
 #include "thread_store.h"
-#include "ob_fixed_queue.h"
-using namespace oceanbase::common;
 
 const int64_t MAX_BUF_LEN = 3L << 20;
 const int64_t MAX_WORD_NUM = 300000L;
@@ -105,12 +103,6 @@ class Word
         w2_ = bswap(w2_);
         w2_ &= (~0L) << ((16 - len) * 8);
       }
-
-      //printf("before: ptr=%.*s len=%ld w1=%lx w2=%lx;", (int)len, ptr, len, w1_, w2_);
-      //char p[MAX_WORD_LEN];
-      //int64_t l;
-      //get_ptr(p, l);
-      //printf("\t\tafter: ptr=%.*s len=%ld\n", (int)len, p, l);
     }
 
     bool operator < (const Word & r) const
@@ -140,44 +132,12 @@ class Word
       }
     }
 
-    const char* get_ptr() const
-    {
-      std::string * p = output_buf.get();
-      if (p != NULL)
-      {
-        p->clear();
-
-        /*
-        if (len_ <= 8)
-        {
-          uint64_t w1 = bswap(w1_);
-          p->append(reinterpret_cast<const char *>(&w1), len_);
-        }
-        else
-        {
-          uint64_t w1 = bswap(w1_);
-          uint64_t w2 = bswap(w2_);
-          p->append(reinterpret_cast<const char *>(&w1), 8);
-          p->append(reinterpret_cast<const char *>(&w2), len_ - 8);
-        }
-        */
-        return p->c_str();
-      }
-      else
-      {
-        return NULL;
-      }
-    }
-
     int64_t get_len() const
     {
       if (w2_ == 0)
       {
         uint64_t w1 = bswap(w1_);
         const uint8_t * p1 = reinterpret_cast<const uint8_t *>(&w1);
-        //printf(" [");
-        //for (int i = 0; i < 8; i++) printf("%d ", p1[i]);
-        //printf("]");
         if (p1[4] == 0)
           if (p1[2] == 0)
             if (p1[1] == 0) return 1;
@@ -197,9 +157,6 @@ class Word
       {
         uint64_t w2 = bswap(w2_);
         const uint8_t * p2 = reinterpret_cast<const uint8_t *>(&w2);
-        //printf(" [");
-        //for (int i = 0; i < 8; i++) printf("%d ", p2[i]);
-        //printf("]");
         if (p2[4] == 0)
           if (p2[2] == 0)
             if (p2[1] == 0) return 9;
@@ -215,11 +172,6 @@ class Word
             if (p2[7] == 0) return 15;
             else return 16;
       }
-    }
-
-    void print() const
-    {
-      std::cout << get_ptr();
     }
 
   protected:
@@ -319,56 +271,14 @@ class ListAcceptor
 {
   public:
     ListAcceptor(TListIter & begin) : cur_(begin) {}
-    //void accept(Word & word)
-    //{
-    //  *cur_++ = word;
-    //}
     void accept(TListIter & iter)
     {
       *cur_ = *iter;
-      //cur_.copy_from(iter);
       ++cur_;
     }
   protected:
     TListIter & cur_;
 };
-
-//class FileAcceptor : public Acceptor
-//{
-//  public:
-//    FileAcceptor(const std::string & filename, int64_t file_size) : fd_(-1), buf_index_(0)
-//    {
-//      fd_ = open(filename.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
-//      if (fd_ == -1)
-//      {
-//        throw new std::exception();
-//      }
-//      buf_ = static_cast<char *>(malloc(file_size));
-//      if (NULL == buf_)
-//      {
-//        throw new std::bad_alloc();
-//      }
-//    }
-//    ~FileAcceptor()
-//    {
-//      if (-1 == write(fd_, buf_, buf_index_))
-//      {
-//        abort();
-//      }
-//      close(fd_);
-//    }
-//    void accept(Word & word)
-//    {
-//      memcpy(buf_ + buf_index_, word.get_ptr(), word.get_len());
-//      buf_index_ += word.get_len();
-//      buf_[buf_index_] = '\n';
-//      buf_index_ ++; 
-//    }
-//  protected:
-//    int fd_;
-//    char * buf_;
-//    int64_t buf_index_;
-//};
 
 class Merger
 {
